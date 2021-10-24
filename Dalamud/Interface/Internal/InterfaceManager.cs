@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -477,9 +476,6 @@ namespace Dalamud.Interface.Internal
 
             this.fontBuildSignal.Reset();
 
-            float oversample = 2.0f;
-            float scale = 1 / oversample;
-
             ImGui.GetIO().Fonts.Clear();
 
             ImFontConfigPtr fontConfig = ImGuiNative.ImFontConfig_ImFontConfig();
@@ -487,25 +483,13 @@ namespace Dalamud.Interface.Internal
             fontConfig.PixelSnapH = true;
 
             var fontPathSc = Path.Combine(dalamud.AssetDirectory.FullName, "UIRes", "NotoSansCJKsc-Medium.otf");
+
             if (!File.Exists(fontPathSc))
                 ShowFontError(fontPathSc);
 
-            var fontSize = 17.0f;
-            for (var i = 10; i < 30; i++) {
-                var path = Path.Combine(dalamud.AssetDirectory.FullName, "UIRes", $"Custom{i}.ttf");
-                if (File.Exists(path))
-                {
-                    fontPathSc = path;
-                    fontSize = i;
-                    break;
-                }
-            }
+            var chineseRangeHandle = GCHandle.Alloc(GlyphRangesChinese.GlyphRanges, GCHandleType.Pinned);
 
-            var range = GlyphRangesChinese.GlyphRanges.TakeWhile((i) => i != 0).Concat(GlyphRangesJapanese.GlyphRanges).TakeWhile((i) => i != 0).Concat(new ushort[] { 0 }).ToArray();
-            var chineseRangeHandle = GCHandle.Alloc(range, GCHandleType.Pinned);
-
-            DefaultFont = ImGui.GetIO().Fonts.AddFontFromFileTTF(fontPathSc, fontSize * oversample, null, chineseRangeHandle.AddrOfPinnedObject());
-            DefaultFont.Scale = scale;
+            DefaultFont = ImGui.GetIO().Fonts.AddFontFromFileTTF(fontPathSc, 17.0f, null, chineseRangeHandle.AddrOfPinnedObject());
 
             var fontPathGame = Path.Combine(dalamud.AssetDirectory.FullName, "UIRes", "gamesym.ttf");
 
@@ -521,7 +505,7 @@ namespace Dalamud.Interface.Internal
                 },
                 GCHandleType.Pinned);
 
-            ImGui.GetIO().Fonts.AddFontFromFileTTF(fontPathGame, fontSize * 1.4f * oversample, fontConfig, gameRangeHandle.AddrOfPinnedObject()).Scale = scale;
+            ImGui.GetIO().Fonts.AddFontFromFileTTF(fontPathGame, 17.0f, fontConfig, gameRangeHandle.AddrOfPinnedObject());
 
             var fontPathIcon = Path.Combine(dalamud.AssetDirectory.FullName, "UIRes", "FontAwesome5FreeSolid.otf");
 
@@ -536,8 +520,7 @@ namespace Dalamud.Interface.Internal
                     0,
                 },
                 GCHandleType.Pinned);
-            IconFont = ImGui.GetIO().Fonts.AddFontFromFileTTF(fontPathIcon, fontSize * oversample, null, iconRangeHandle.AddrOfPinnedObject());
-            IconFont.Scale = scale;
+            IconFont = ImGui.GetIO().Fonts.AddFontFromFileTTF(fontPathIcon, 17.0f, null, iconRangeHandle.AddrOfPinnedObject());
 
             var fontPathMono = Path.Combine(dalamud.AssetDirectory.FullName, "UIRes", "Inconsolata-Regular.ttf");
 
