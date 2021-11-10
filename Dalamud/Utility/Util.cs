@@ -1,18 +1,13 @@
 using System;
 using System.Diagnostics;
-using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
 
-using Dalamud.Configuration.Internal;
 using Dalamud.Game;
 using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using ImGuiNET;
-using Microsoft.Win32;
 using Serilog;
 
 namespace Dalamud.Utility
@@ -207,82 +202,6 @@ namespace Dalamud.Utility
             }
 
             return text;
-        }
-
-        /// <summary>
-        /// This is a FUCK-GFW replacement of urls.
-        /// </summary>
-        /// <param name="url">A url to be fucked.</param>
-        /// <returns>A fucked url.</returns>
-        public static string FuckGFW(string url)
-        {
-            if (url == null) return null;
-            var startInfo = Service<DalamudStartInfo>.Get();
-            if (!startInfo.GlobalAccelerate)
-            {
-                url = Regex.Replace(url, @"^https:\/\/raw\.githubusercontent\.com", "https://raw.fastgit.org");
-                url = Regex.Replace(url, @"^https:\/\/(?:gitee|github)\.com\/(.*)?\/(.*)?\/raw", "https://raw.fastgit.org/$1/$2");
-                url = Regex.Replace(url, @"^https:\/\/github\.com\/(.*)?\/(.*)?\/releases\/download", "https://download.fastgit.org/$1/$2/releases/download/");
-            }
-            else
-            {
-                url = Regex.Replace(url, @"cos\.ap-nanjing\.myqcloud\.com", "cos.accelerate.myqcloud.com");
-            }
-
-            return url;
-        }
-
-        ///     Compress a string using GZip.
-        /// </summary>
-        /// <param name="str">The input string.</param>
-        /// <returns>The compressed output bytes.</returns>
-        public static byte[] CompressString(string str)
-        {
-            var bytes = Encoding.UTF8.GetBytes(str);
-
-            using (var msi = new MemoryStream(bytes))
-            using (var mso = new MemoryStream())
-            {
-                using (var gs = new GZipStream(mso, CompressionMode.Compress))
-                {
-                    CopyTo(msi, gs);
-                }
-
-                return mso.ToArray();
-            }
-        }
-
-        /// <summary>
-        ///     Decompress a string using GZip.
-        /// </summary>
-        /// <param name="bytes">The input bytes.</param>
-        /// <returns>The compressed output string.</returns>
-        public static string DecompressString(byte[] bytes)
-        {
-            using (var msi = new MemoryStream(bytes))
-            using (var mso = new MemoryStream())
-            {
-                using (var gs = new GZipStream(msi, CompressionMode.Decompress))
-                {
-                    CopyTo(gs, mso);
-                }
-
-                return Encoding.UTF8.GetString(mso.ToArray());
-            }
-        }
-
-        /// <summary>
-        /// Copy one stream to another.
-        /// </summary>
-        /// <param name="src">The source stream.</param>
-        /// <param name="dest">The destination stream.</param>
-        /// <param name="len">The maximum length to copy.</param>
-        public static void CopyTo(Stream src, Stream dest, int len = 4069)
-        {
-            var bytes = new byte[len];
-            int cnt;
-
-            while ((cnt = src.Read(bytes, 0, bytes.Length)) != 0) dest.Write(bytes, 0, cnt);
         }
 
         // TODO: Someone implement GetUTF8String with some IntPtr overloads.
