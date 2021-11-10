@@ -16,7 +16,7 @@ namespace Dalamud.Plugin.Internal
     internal partial class PluginRepository
     {
         // TODO: Change back to master after api4 release
-        private const string DalamudPluginsMasterUrl = "https://dalamudplugins-1253720819.cos.ap-nanjing.myqcloud.com/cn-api4/pluginmaster.json";
+        private const string DalamudPluginsMasterUrl = "https://raw.githubusercontent.com/Bluefissure/DalamudPlugins/cn-api4/pluginmaster.json";
 
         private static readonly ModuleLog Log = new("PLUGINR");
 
@@ -28,14 +28,14 @@ namespace Dalamud.Plugin.Internal
         public PluginRepository(string pluginMasterUrl, bool isEnabled)
         {
             this.PluginMasterUrl = pluginMasterUrl;
-            this.IsThirdParty = Utility.Util.FuckGFW(pluginMasterUrl) != Utility.Util.FuckGFW(DalamudPluginsMasterUrl);
+            this.IsThirdParty = pluginMasterUrl != DalamudPluginsMasterUrl;
             this.IsEnabled = isEnabled;
         }
 
         /// <summary>
         /// Gets a new instance of the <see cref="PluginRepository"/> class for the main repo.
         /// </summary>
-        public static PluginRepository MainRepo => new(Utility.Util.FuckGFW(DalamudPluginsMasterUrl), true);
+        public static PluginRepository MainRepo => new(DalamudPluginsMasterUrl, true);
 
         /// <summary>
         /// Gets the pluginmaster.json URL.
