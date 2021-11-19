@@ -216,7 +216,7 @@ namespace Dalamud.Interface.Internal.Windows
                 clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
             }
 
-            ImGui.PushFont(InterfaceManager.MonoFont);
+            ImGui.PushFont(InterfaceManager.DefaultFont);
 
             var childPos = ImGui.GetWindowPos();
             var childDrawList = ImGui.GetWindowDrawList();
