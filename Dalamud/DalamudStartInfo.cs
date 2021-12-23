@@ -53,8 +53,8 @@ namespace Dalamud
         public bool OptOutMbCollection { get; init; }
 
         /// <summary>
-        /// Gets a value indicating whether or not use global accelearte of tencent cos by default.
+        /// Gets a value that specifies how much to wait before a new Dalamud session.
         /// </summary>
-        public bool GlobalAccelerate { get; init; }
+        public int DelayInitializeMs { get; init; } = 0;
     }
 }

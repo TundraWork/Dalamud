@@ -149,12 +149,16 @@ namespace Dalamud.Interface.Internal.Windows
 
             _ = pluginManager.ReloadPluginMastersAsync();
 
-            this.updatePluginCount = 0;
-            this.updatedPlugins = null;
-
             this.searchText = string.Empty;
             this.sortKind = PluginSortKind.Alphabetical;
             this.filterText = Locs.SortBy_Alphabetical;
+
+            if (this.updateStatus == OperationStatus.Complete || this.updateStatus == OperationStatus.Idle)
+            {
+                this.updateStatus = OperationStatus.Idle;
+                this.updatePluginCount = 0;
+                this.updatedPlugins = null;
+            }
         }
 
         /// <inheritdoc/>
@@ -386,6 +390,11 @@ namespace Dalamud.Interface.Internal.Windows
             if (ImGui.BeginPopupModal(modalTitle, ref this.feedbackModalDrawing, ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoScrollbar))
             {
                 ImGui.Text(Locs.FeedbackModal_Text(this.feedbackPlugin.Name));
+
+                if (this.feedbackPlugin?.FeedbackMessage != null)
+                {
+                    ImGui.TextWrapped(this.feedbackPlugin.FeedbackMessage);
+                }
 
                 if (this.pluginListUpdatable.Any(
                     up => up.InstalledPlugin.Manifest.InternalName == this.feedbackPlugin?.InternalName))
@@ -1226,7 +1235,7 @@ namespace Dalamud.Interface.Internal.Windows
 
                 this.DrawVisitRepoUrlButton(manifest.RepoUrl);
 
-                if (!manifest.SourceRepo.IsThirdParty)
+                if (!manifest.SourceRepo.IsThirdParty && manifest.AcceptsFeedback)
                 {
                     this.DrawSendFeedbackButton(manifest);
                 }
@@ -1401,7 +1410,7 @@ namespace Dalamud.Interface.Internal.Windows
                 ImGui.TextColored(ImGuiColors.DalamudGrey3, downloadText);
 
                 var isThirdParty = manifest.IsThirdParty;
-                var canFeedback = !isThirdParty && !plugin.IsDev && plugin.Manifest.DalamudApiLevel == PluginManager.DalamudApiLevel;
+                var canFeedback = !isThirdParty && !plugin.IsDev && plugin.Manifest.DalamudApiLevel == PluginManager.DalamudApiLevel && plugin.Manifest.AcceptsFeedback;
 
                 // Installed from
                 if (plugin.IsDev)
@@ -1597,7 +1606,7 @@ namespace Dalamud.Interface.Internal.Windows
                             if (!enableTask.Result)
                                 return;
 
-                            var loadTask = Task.Run(() => plugin.Load(PluginLoadReason.Installer))
+                            var loadTask = Task.Run(() => plugin.Load(PluginLoadReason.Installer, plugin is LocalDevPlugin))
                                 .ContinueWith(this.DisplayErrorContinuation, Locs.ErrorModal_LoadFail(plugin.Name));
 
                             loadTask.Wait();
@@ -1880,7 +1889,7 @@ namespace Dalamud.Interface.Internal.Windows
 
             return hasSearchString && !(
                 manifest.Name.ToLowerInvariant().Contains(searchString) ||
-                manifest.Author.Equals(this.searchText, StringComparison.InvariantCultureIgnoreCase) ||
+                (!manifest.Author.IsNullOrEmpty() && manifest.Author.Equals(this.searchText, StringComparison.InvariantCultureIgnoreCase)) ||
                 (manifest.Tags != null && manifest.Tags.Contains(searchString, StringComparer.InvariantCultureIgnoreCase)));
         }
 
@@ -2100,7 +2109,7 @@ namespace Dalamud.Interface.Internal.Windows
 
             public static string PluginTitleMod_OutdatedError => Loc.Localize("InstallerOutdatedError", " (outdated)");
 
-            public static string PluginTitleMod_BannedError => Loc.Localize("InstallerBannedError", " (banned)");
+            public static string PluginTitleMod_BannedError => Loc.Localize("InstallerBannedError", " (automatically disabled)");
 
             public static string PluginTitleMod_New => Loc.Localize("InstallerNewPlugin ", " New!");
 
@@ -2136,10 +2145,10 @@ namespace Dalamud.Interface.Internal.Windows
 
             public static string PluginBody_Outdated => Loc.Localize("InstallerOutdatedPluginBody ", "This plugin is outdated and incompatible at the moment. Please wait for it to be updated by its author.");
 
-            public static string PluginBody_Banned => Loc.Localize("InstallerBannedPluginBody ", "This plugin version is banned due to incompatibilities and not available at the moment. Please wait for it to be updated by its author.");
+            public static string PluginBody_Banned => Loc.Localize("InstallerBannedPluginBody ", "This plugin was automatically disabled due to incompatibilities and is not available at the moment. Please wait for it to be updated by its author.");
 
             public static string PluginBody_BannedReason(string message) =>
-                Loc.Localize("InstallerBannedPluginBodyReason ", "This plugin is banned: {0}").Format(message);
+                Loc.Localize("InstallerBannedPluginBodyReason ", "This plugin was automatically disabled: {0}").Format(message);
 
             #endregion
 

@@ -1,13 +1,19 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
+using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 using Dalamud.Configuration.Internal;
 using Dalamud.Game;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using ImGuiNET;
@@ -21,7 +27,17 @@ namespace Dalamud.Utility
     /// </summary>
     public static class Util
     {
-        private static string gitHashInternal;
+        private static string? gitHashInternal;
+        private static string? gitHashClientStructsInternal;
+
+        private static ulong moduleStartAddr;
+        private static ulong moduleEndAddr;
+
+        /// <summary>
+        /// Gets an httpclient for usage.
+        /// Do NOT await this.
+        /// </summary>
+        public static HttpClient HttpClient { get; } = new();
 
         /// <summary>
         /// Gets the assembly version of Dalamud.
@@ -41,9 +57,27 @@ namespace Dalamud.Utility
             var asm = typeof(Util).Assembly;
             var attrs = asm.GetCustomAttributes<AssemblyMetadataAttribute>();
 
-            gitHashInternal = attrs.FirstOrDefault(a => a.Key == "GitHash")?.Value;
+            gitHashInternal = attrs.First(a => a.Key == "GitHash").Value;
 
             return gitHashInternal;
+        }
+
+        /// <summary>
+        /// Gets the git hash value from the assembly
+        /// or null if it cannot be found.
+        /// </summary>
+        /// <returns>The git hash of the assembly.</returns>
+        public static string GetGitHashClientStructs()
+        {
+            if (gitHashClientStructsInternal != null)
+                return gitHashClientStructsInternal;
+
+            var asm = typeof(Util).Assembly;
+            var attrs = asm.GetCustomAttributes<AssemblyMetadataAttribute>();
+
+            gitHashClientStructsInternal = attrs.First(a => a.Key == "GitHashClientStructs").Value;
+
+            return gitHashClientStructsInternal;
         }
 
         /// <summary>
@@ -131,6 +165,121 @@ namespace Dalamud.Utility
         }
 
         /// <summary>
+        /// Show a structure in an ImGui context.
+        /// </summary>
+        /// <param name="obj">The structure to show.</param>
+        /// <param name="addr">The address to the structure.</param>
+        /// <param name="autoExpand">Whether or not this structure should start out expanded.</param>
+        /// <param name="path">The already followed path.</param>
+        public static void ShowStruct(object obj, ulong addr, bool autoExpand = false, IEnumerable<string>? path = null)
+        {
+            ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(3, 2));
+            path ??= new List<string>();
+
+            if (moduleEndAddr == 0 && moduleStartAddr == 0)
+            {
+                try
+                {
+                    var processModule = Process.GetCurrentProcess().MainModule;
+                    if (processModule != null)
+                    {
+                        moduleStartAddr = (ulong)processModule.BaseAddress.ToInt64();
+                        moduleEndAddr = moduleStartAddr + (ulong)processModule.ModuleMemorySize;
+                    }
+                    else
+                    {
+                        moduleEndAddr = 1;
+                    }
+                }
+                catch
+                {
+                    moduleEndAddr = 1;
+                }
+            }
+
+            ImGui.PushStyleColor(ImGuiCol.Text, 0xFF00FFFF);
+            if (autoExpand)
+            {
+                ImGui.SetNextItemOpen(true, ImGuiCond.Appearing);
+            }
+
+            if (ImGui.TreeNode($"{obj}##print-obj-{addr:X}-{string.Join("-", path)}"))
+            {
+                ImGui.PopStyleColor();
+                foreach (var f in obj.GetType().GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.Instance))
+                {
+                    var fixedBuffer = (FixedBufferAttribute)f.GetCustomAttribute(typeof(FixedBufferAttribute));
+                    if (fixedBuffer != null)
+                    {
+                        ImGui.Text($"fixed");
+                        ImGui.SameLine();
+                        ImGui.TextColored(new Vector4(0.2f, 0.9f, 0.9f, 1), $"{fixedBuffer.ElementType.Name}[0x{fixedBuffer.Length:X}]");
+                    }
+                    else
+                    {
+                        ImGui.TextColored(new Vector4(0.2f, 0.9f, 0.9f, 1), $"{f.FieldType.Name}");
+                    }
+
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(0.2f, 0.9f, 0.4f, 1), $"{f.Name}: ");
+                    ImGui.SameLine();
+
+                    ShowValue(addr, new List<string>(path) { f.Name }, f.FieldType, f.GetValue(obj));
+                }
+
+                foreach (var p in obj.GetType().GetProperties())
+                {
+                    ImGui.TextColored(new Vector4(0.2f, 0.9f, 0.9f, 1), $"{p.PropertyType.Name}");
+                    ImGui.SameLine();
+                    ImGui.TextColored(new Vector4(0.2f, 0.6f, 0.4f, 1), $"{p.Name}: ");
+                    ImGui.SameLine();
+
+                    ShowValue(addr, new List<string>(path) { p.Name }, p.PropertyType, p.GetValue(obj));
+                }
+
+                ImGui.TreePop();
+            }
+            else
+            {
+                ImGui.PopStyleColor();
+            }
+
+            ImGui.PopStyleVar();
+        }
+
+        /// <summary>
+        /// Show a structure in an ImGui context.
+        /// </summary>
+        /// <typeparam name="T">The type of the structure.</typeparam>
+        /// <param name="obj">The pointer to the structure.</param>
+        /// <param name="autoExpand">Whether or not this structure should start out expanded.</param>
+        public static unsafe void ShowStruct<T>(T* obj, bool autoExpand = false) where T : unmanaged
+        {
+            ShowStruct(*obj, (ulong)&obj, autoExpand);
+        }
+
+        /// <summary>
+        /// Show a GameObject's internal data in an ImGui-context.
+        /// </summary>
+        /// <param name="go">The GameObject to show.</param>
+        /// <param name="autoExpand">Whether or not the struct should start as expanded.</param>
+        public static unsafe void ShowGameObjectStruct(GameObject go, bool autoExpand = true)
+        {
+            switch (go)
+            {
+                case BattleChara bchara:
+                    ShowStruct(bchara.Struct, autoExpand);
+                    break;
+                case Character chara:
+                    ShowStruct(chara.Struct, autoExpand);
+                    break;
+                default:
+                    ShowStruct(go.Struct, autoExpand);
+                    break;
+            }
+        }
+
+        /// <summary>
         /// Show all properties and fields of the provided object via ImGui.
         /// </summary>
         /// <param name="obj">The object to show.</param>
@@ -148,7 +297,12 @@ namespace Dalamud.Utility
 
             foreach (var propertyInfo in type.GetProperties())
             {
-                ImGui.TextColored(ImGuiColors.DalamudOrange, $"    {propertyInfo.Name}: {propertyInfo.GetValue(obj)}");
+                var value = propertyInfo.GetValue(obj);
+                var valueType = value?.GetType();
+                if (valueType == typeof(IntPtr))
+                    ImGui.TextColored(ImGuiColors.DalamudOrange, $"    {propertyInfo.Name}: 0x{value:X}");
+                else
+                    ImGui.TextColored(ImGuiColors.DalamudOrange, $"    {propertyInfo.Name}: {value}");
             }
 
             ImGui.Unindent();
@@ -209,7 +363,7 @@ namespace Dalamud.Utility
         }
 
         /// <summary>
-        ///     Compress a string using GZip.
+        /// Compress a string using GZip.
         /// </summary>
         /// <param name="str">The input string.</param>
         /// <returns>The compressed output bytes.</returns>
@@ -217,35 +371,29 @@ namespace Dalamud.Utility
         {
             var bytes = Encoding.UTF8.GetBytes(str);
 
-            using (var msi = new MemoryStream(bytes))
-            using (var mso = new MemoryStream())
-            {
-                using (var gs = new GZipStream(mso, CompressionMode.Compress))
-                {
-                    CopyTo(msi, gs);
-                }
+            using var msi = new MemoryStream(bytes);
+            using var mso = new MemoryStream();
+            using var gs = new GZipStream(mso, CompressionMode.Compress);
 
-                return mso.ToArray();
-            }
+            CopyTo(msi, gs);
+
+            return mso.ToArray();
         }
 
         /// <summary>
-        ///     Decompress a string using GZip.
+        /// Decompress a string using GZip.
         /// </summary>
         /// <param name="bytes">The input bytes.</param>
         /// <returns>The compressed output string.</returns>
         public static string DecompressString(byte[] bytes)
         {
-            using (var msi = new MemoryStream(bytes))
-            using (var mso = new MemoryStream())
-            {
-                using (var gs = new GZipStream(msi, CompressionMode.Decompress))
-                {
-                    CopyTo(gs, mso);
-                }
+            using var msi = new MemoryStream(bytes);
+            using var mso = new MemoryStream();
+            using var gs = new GZipStream(msi, CompressionMode.Decompress);
 
-                return Encoding.UTF8.GetString(mso.ToArray());
-            }
+            CopyTo(gs, mso);
+
+            return Encoding.UTF8.GetString(mso.ToArray());
         }
 
         /// <summary>
@@ -261,9 +409,6 @@ namespace Dalamud.Utility
 
             while ((cnt = src.Read(bytes, 0, bytes.Length)) != 0) dest.Write(bytes, 0, cnt);
         }
-
-        // TODO: Someone implement GetUTF8String with some IntPtr overloads.
-        // while(Marshal.ReadByte(0, sz) != 0) { sz++; }
 
         /// <summary>
         /// Heuristically determine if Dalamud is running on Linux/WINE.
@@ -292,6 +437,74 @@ namespace Dalamud.Utility
             }
 
             return Check1() || Check2() || Check3();
+        }
+
+        /// <summary>
+        /// Open a link in the default browser.
+        /// </summary>
+        /// <param name="url">The link to open.</param>
+        public static void OpenLink(string url)
+        {
+            var process = new ProcessStartInfo(url)
+            {
+                UseShellExecute = true,
+            };
+            Process.Start(process);
+        }
+
+        private static unsafe void ShowValue(ulong addr, IEnumerable<string> path, Type type, object value)
+        {
+            if (type.IsPointer)
+            {
+                var val = (Pointer)value;
+                var unboxed = Pointer.Unbox(val);
+                if (unboxed != null)
+                {
+                    var unboxedAddr = (ulong)unboxed;
+                    ImGuiHelpers.ClickToCopyText($"{(ulong)unboxed:X}");
+                    if (moduleStartAddr > 0 && unboxedAddr >= moduleStartAddr && unboxedAddr <= moduleEndAddr)
+                    {
+                        ImGui.SameLine();
+                        ImGui.PushStyleColor(ImGuiCol.Text, 0xffcbc0ff);
+                        ImGuiHelpers.ClickToCopyText($"ffxiv_dx11.exe+{unboxedAddr - moduleStartAddr:X}");
+                        ImGui.PopStyleColor();
+                    }
+
+                    try
+                    {
+                        var eType = type.GetElementType();
+                        var ptrObj = SafeMemory.PtrToStructure(new IntPtr(unboxed), eType);
+                        ImGui.SameLine();
+                        if (ptrObj == null)
+                        {
+                            ImGui.Text("null or invalid");
+                        }
+                        else
+                        {
+                            ShowStruct(ptrObj, (ulong)unboxed, path: new List<string>(path));
+                        }
+                    }
+                    catch
+                    {
+                        // Ignored
+                    }
+                }
+                else
+                {
+                    ImGui.Text("null");
+                }
+            }
+            else
+            {
+                if (!type.IsPrimitive)
+                {
+                    ShowStruct(value, addr, path: new List<string>(path));
+                }
+                else
+                {
+                    ImGui.Text($"{value}");
+                }
+            }
         }
     }
 }
